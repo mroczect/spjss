@@ -1,0 +1,124 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.12'
+  LIBRJSS_VERSION: 'v2.3.0'
+  APP_NAME: spjss
+
+jobs:
+  windows:
+    name: build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout spjss
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller keyring
+          python -m pip install -e ".[keyring]"
+
+      - name: Fetch librjss-ffi DLL from librjss release
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mroczect/librjss/releases/download/${{ env.LIBRJSS_VERSION }}/librjss-ffi-${{ env.LIBRJSS_VERSION }}-windows-x86_64.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile ffi.zip
+          Expand-Archive -Path ffi.zip -DestinationPath ffi -Force
+          Get-ChildItem -Path ffi -Recurse
+
+          New-Item -ItemType Directory -Force -Path src/spjss/_native | Out-Null
+          $dll = Get-ChildItem -Path ffi -Recurse -Filter "librjss_ffi.dll" | Select-Object -First 1
+          if (-not $dll) { throw "librjss_ffi.dll not found in archive" }
+          Copy-Item $dll.FullName -Destination src/spjss/_native/librjss_ffi.dll -Force
+          Get-ChildItem src/spjss/_native
+
+      - name: Build spjss.exe with PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name spjss `
+            --add-data "src\spjss\data;spjss\data" `
+            --add-binary "src\spjss\_native\librjss_ffi.dll;spjss\_native" `
+            --hidden-import keyring.backends.Windows `
+            --collect-submodules keyring.backends `
+            --collect-all keyring `
+            src\spjss\__main__.py
+
+          if (-not (Test-Path dist\spjss.exe)) { throw "dist\spjss.exe missing" }
+          Get-Item dist\spjss.exe | Format-List Name, Length
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
+          & $iscc installer.iss
+          Get-ChildItem installer_out
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spjss-windows
+          path: |
+            dist/spjss.exe
+            installer_out/spjss-setup-*.exe
+          if-no-files-found: error
+
+      - name: Create release and attach assets
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $env:GITHUB_REF -replace '^refs/tags/', ''
+          } else {
+            "${{ github.event.inputs.tag }}"
+          }
+
+          $installer = Get-ChildItem installer_out\spjss-setup-*.exe | Select-Object -First 1
+          $exe = Get-Item dist\spjss.exe
+
+          Write-Host "Tag: $tag"
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "Exe: $($exe.FullName)"
+
+          # create release if it doesn't exist
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title $tag --generate-notes
+          }
+
+          gh release upload $tag $installer.FullName $exe.FullName --clobber

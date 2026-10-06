@@ -1,0 +1,48 @@
+Third-party notices
+===================
+
+spjss includes or depends on the following third-party software.
+Each is distributed under its own license. The license text below
+is reproduced for reference. Refer to the upstream projects for
+the authoritative text.
+
+
+librjss-ffi 2.3.0
+-----------------
+
+Asynchronous Rust client for Frappe and ERPNext backends, with a
+C ABI exposed for use from other languages.
+
+  Source   https://github.com/mroczect/librjss
+  License  MIT
+
+The MIT license text appears in license.txt.
+
+
+Python standard library
+-----------------------
+
+spjss uses the following modules from the Python standard library,
+which is distributed under the Python Software Foundation License
+Version 2. The modules used are:
+
+  tkinter         GUI toolkit
+  ctypes          Foreign function interface
+  json            Configuration file format
+  pathlib         Filesystem paths
+  threading       Background worker
+  queue           Thread-safe message passing
+  os, sys         Platform utilities
+
+  Source   https://docs.python.org/3/license.html
+  License  PSF-2.0
+
+
+Tcl/Tk
+------
+
+tkinter binds to Tcl/Tk. Tcl/Tk is distributed under a BSD-style
+license.
+
+  Source   https://www.tcl.tk/software/tcltk/license.html
+  License  BSD-style

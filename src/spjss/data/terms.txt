@@ -1,0 +1,70 @@
+Terms of use
+============
+
+By running spjss, you agree to the following terms. If you do not
+agree, do not run the application.
+
+
+1. Authorised use only
+
+spjss authenticates to a server using credentials you supply. You
+must be authorised to access that server and to retrieve the
+documents you request. If your account lacks permission for a
+document, the server will reject the request. spjss does not
+attempt to bypass server-side permission checks and does not
+include any feature that would do so.
+
+Do not use spjss to access data you are not entitled to see.
+
+
+2. Server load
+
+Every document in a range produces at least one HTTP request.
+Requesting a range that covers many thousands of documents places
+load on the server. The delay_ms setting exists to spread requests
+out. Do not set it to zero or a very low value on a production
+server without first checking with your administrator.
+
+If your administrator asks you to stop, stop.
+
+
+3. No warranty
+
+spjss is distributed under the MIT license, whose warranty
+disclaimer applies. In plain language: the software may contain
+defects. It may fail to download some documents. It may write
+files to unexpected paths if you enter an incorrect output
+folder. It may interpret a server response incorrectly.
+
+You use spjss at your own risk. The author is not responsible for
+lost data, missed documents, or any consequence of running the
+application.
+
+
+4. No support obligation
+
+The author is not obligated to provide support, updates, bug
+fixes, or responses to questions. Issues and pull requests on the
+GitHub repository are welcome but may not be addressed promptly
+or at all.
+
+
+5. Compliance with local rules
+
+Your organisation may have its own rules about which tools may
+access production systems, how credentials may be handled, and
+where downloaded files may be stored. It is your responsibility
+to comply with those rules. spjss does not enforce any of them.
+
+
+6. Changes
+
+These terms may be revised in future versions. The version of
+the terms that applies to you is the one shipped with the version
+of spjss you are running.
+
+
+7. Governing interpretation
+
+Nothing in this document overrides the license in license.txt. In
+case of conflict, the license controls.

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.tmp/
+
+src/spjss/_native/*.so
+src/spjss/_native/*.dylib
+src/spjss/_native/*.dll
+src/spjss/_native/*.a
+src/spjss/_native/*.rlib
+src/spjss/_native/*.d

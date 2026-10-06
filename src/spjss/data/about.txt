@@ -1,0 +1,88 @@
+spjss
+=====
+
+A desktop application for downloading PDF files from a Frappe or
+ERPNext server in batch, given a range of document identifiers.
+
+
+Purpose
+-------
+
+spjss exists because Frappe's web interface does not offer a way
+to download many print-format PDFs at once. Doing it by hand for
+dozens or hundreds of documents is impractical. This application
+automates that process: you specify a range of document names, and
+it requests each PDF from the server and writes it to a local
+folder.
+
+
+Scope
+-----
+
+spjss is a client. It does not read, store, or generate PDFs
+itself. All PDF generation happens on the server, using the print
+format you specify. spjss only requests the file and writes the
+response to disk.
+
+spjss does not modify any data on the server. It calls only the
+read-only endpoint frappe.utils.print_format.download_pdf, which
+returns a PDF for a single document. No writes, no submissions,
+no cancellations, no deletions.
+
+
+Version
+-------
+
+Version     : 0.1.0
+Author      : mroczect <mroczect@proton.me>
+Repository  : https://github.com/mroczect/librjss
+License     : MIT
+Language    : Python 3.10+ and tkinter
+
+
+Dependencies
+------------
+
+  Python 3.10 or newer              https://python.org
+  tkinter                           bundled with CPython
+  ctypes                            bundled with CPython
+  librjss-ffi 2.3.0 (Rust, MIT)     https://github.com/mroczect/librjss
+
+tkinter and ctypes ship with CPython. Only librjss-ffi needs to be
+obtained separately, either by building from source or from a
+published release binary.
+
+
+How to use
+----------
+
+  1. Read this page.
+  2. Read the privacy notice.
+  3. Enter server URL, email, and password.
+  4. Enter DocType, start identifier, end identifier, and the
+     folder where PDFs should be saved.
+  5. Review the summary.
+  6. Run.
+
+Navigation is at the bottom of every page. Back moves to the
+previous step without losing data you have already entered. Next
+moves forward. On the last page, Run starts the download and
+Finish closes the application.
+
+
+Notes
+-----
+
+No credentials are stored by this application. See privacy.txt for
+details on what is written to disk and what is not.
+
+No data is sent to any third party. The only network destination
+is the server URL you enter.
+
+
+Warranty
+--------
+
+spjss is provided as is, without warranty of any kind. See
+license.txt for the full MIT license text and terms.txt for the
+additional disclaimer and terms of use.

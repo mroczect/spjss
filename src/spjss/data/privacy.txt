@@ -1,0 +1,131 @@
+Privacy notice
+==============
+
+This notice describes what spjss records on your computer, where
+it is kept, how long it is kept, and how to remove it. It is
+written to be read by the person running the application.
+
+
+What is stored
+--------------
+
+When you complete the download step for the first time, spjss
+writes a configuration file to disk. That file contains the
+following fields:
+
+  base_url          Server URL, e.g. https://erp.example.com
+  email             The email address you entered
+  insecure_ssl      Whether invalid TLS certificates are allowed
+  doctype           Frappe DocType, e.g. "Surat Peringatan KSP"
+  print_format      Print format name, or empty for the default
+  output_dir        Absolute path to the folder where PDFs go
+  delay_ms          Delay in milliseconds between HTTP requests
+  no_letterhead     Whether the PDF was requested without letterhead
+  overwrite         Whether existing files were overwritten
+
+The configuration file is written only after a batch download
+completes. If you close the application before finishing, nothing
+is written.
+
+
+What is not stored
+------------------
+
+Your password is never written to disk. It is held in memory only
+for the duration of a single run, and is discarded when you close
+the application.
+
+Session cookies issued by the server are not written to disk. A
+new session is established every time you start the application.
+
+No log file is created. The activity log you see on the Run page
+exists only in memory and disappears when the window closes.
+
+Nothing is transmitted to any server other than the one you
+entered in the Credentials page. There is no telemetry, no crash
+reporting, no update check.
+
+
+Where the configuration file lives
+----------------------------------
+
+  Linux    $XDG_CONFIG_HOME/spjss/config.json
+           (falls back to ~/.config/spjss/config.json)
+
+  macOS    ~/.config/spjss/config.json
+
+  Windows  %APPDATA%\spjss\config.json
+
+The file is plain JSON and can be inspected with any text editor.
+
+
+How to delete the configuration
+-------------------------------
+
+  Linux, macOS
+
+    rm ~/.config/spjss/config.json
+
+  Windows (PowerShell)
+
+    Remove-Item "$env:APPDATA\spjss\config.json"
+
+Deleting the file has no effect on the server. Your account,
+documents, and session history are untouched.
+
+
+Session lifetime
+----------------
+
+When a batch completes, spjss sends a logout request to the server
+to invalidate the session. If you close the window before a batch
+completes, the session remains open on the server until it expires
+by Frappe's own session expiry setting. The default is 24 hours,
+configurable in System Settings on the server side.
+
+
+Network activity
+----------------
+
+During a run, spjss sends the following requests to the server
+you specified:
+
+  POST /api/method/login
+        Called once at the start of each run. Sends your email and
+        password. The server responds with a session cookie.
+
+  GET  /app
+        Called once after login. Used to obtain the CSRF token and
+        the boot payload. Frappe requires this for session auth.
+
+  GET  /api/method/frappe.auth.get_logged_user
+        Called on re-login if the session expires.
+
+  GET  /api/method/frappe.utils.print_format.download_pdf
+        Called once per document in the range. Returns the PDF.
+
+  POST /api/method/logout
+        Called at the end of the run.
+
+No other requests are made. No third-party hosts are contacted.
+
+
+Basis for processing
+--------------------
+
+All data handled by spjss is either entered directly by you or
+retrieved from the server you specified, using credentials you
+supplied. The application does not process any data beyond what
+is needed to perform the download you requested.
+
+
+Contact
+-------
+
+Questions about this notice can be sent to:
+
+  mroczect <mroczect@proton.me>
+
+For questions about data held on the server itself, contact your
+Frappe or ERPNext administrator. spjss has no visibility into
+server-side data.
