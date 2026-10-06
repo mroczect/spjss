@@ -43,16 +43,17 @@ jobs:
       - name: Fetch librjss-ffi DLL from librjss release
         shell: pwsh
         run: |
-          $url = "https://github.com/mroczect/librjss/releases/download/${{ env.LIBRJSS_VERSION }}/librjss-ffi-${{ env.LIBRJSS_VERSION }}-windows-x86_64.zip"
-          Write-Host "Downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile ffi.zip
-          Expand-Archive -Path ffi.zip -DestinationPath ffi -Force
-          Get-ChildItem -Path ffi -Recurse
-
+          $base = "https://github.com/mroczect/librjss/releases/download/${{ env.LIBRJSS_VERSION }}"
           New-Item -ItemType Directory -Force -Path src/spjss/_native | Out-Null
-          $dll = Get-ChildItem -Path ffi -Recurse -Filter "librjss_ffi.dll" | Select-Object -First 1
-          if (-not $dll) { throw "librjss_ffi.dll not found in archive" }
-          Copy-Item $dll.FullName -Destination src/spjss/_native/librjss_ffi.dll -Force
+
+          curl.exe -L --fail -o src/spjss/_native/librjss_ffi.dll "$base/librjss_ffi.dll"
+          if (-not (Test-Path src/spjss/_native/librjss_ffi.dll)) {
+            throw "librjss_ffi.dll download failed"
+          }
+
+          curl.exe -L --fail -o src/spjss/_native/librjss.h "$base/librjss.h"
+
+          Get-Item src/spjss/_native/librjss_ffi.dll | Format-List Name, Length
           Get-ChildItem src/spjss/_native
 
       - name: Build spjss.exe with PyInstaller
@@ -115,7 +116,6 @@ jobs:
           Write-Host "Installer: $($installer.FullName)"
           Write-Host "Exe: $($exe.FullName)"
 
-          # create release if it doesn't exist
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --title $tag --generate-notes
