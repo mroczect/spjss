@@ -65,12 +65,13 @@ jobs:
             --onefile `
             --windowed `
             --name spjss `
+            --paths src `
             --add-data "src\spjss\data;spjss\data" `
             --add-binary "src\spjss\_native\librjss_ffi.dll;spjss\_native" `
             --hidden-import keyring.backends.Windows `
             --collect-submodules keyring.backends `
             --collect-all keyring `
-            src\spjss\__main__.py
+            entry.py
 
           if (-not (Test-Path dist\spjss.exe)) { throw "dist\spjss.exe missing" }
           Get-Item dist\spjss.exe | Format-List Name, Length
