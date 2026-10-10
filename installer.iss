@@ -25,7 +25,6 @@ VersionInfoProductVersion={#AppVersion}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName} {#AppVersion}
 
 OutputDir=installer_out
@@ -43,8 +42,6 @@ CloseApplications=yes
 RestartApplications=no
 AllowNoIcons=yes
 LicenseFile=src\spjss\data\license.txt
-SetupIconFile=assets\spjss.ico
-UninstallDisplayIcon={app}\{#AppExeName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
