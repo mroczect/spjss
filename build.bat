@@ -16,7 +16,7 @@ if not exist installer_out mkdir installer_out
 iscc installer.iss || goto :err
 
 echo.
-echo DONE: installer_out\spjss-setup-0.2.2.exe
+echo DONE: installer_out\spjss-setup-0.2.3.exe
 goto :eof
 
 :err
