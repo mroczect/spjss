@@ -2,8 +2,8 @@
 
 Batch PDF downloader for Frappe / ERPNext. Desktop app, Python + tkinter.
 
-Give it a range of document names (e.g. `JD4521` to `JD4546`), it downloads
-each one as PDF from the server.
+Give it a range of document names (e.g. `JD4521` to `JD4546`) and it
+downloads each one as PDF from the server.
 
 ---
 
@@ -11,10 +11,12 @@ each one as PDF from the server.
 
 - Logs in to a Frappe / ERPNext server with email + password
 - Downloads PDFs for a range of documents in one batch
-- Saves each file as `<ID>.pdf` to a folder you choose
-- Shows progress, ETA, and a log
+- Names each file from a template — `{name}`, `{customer}`, or both
+- Extracts the customer name from the PDF text (optional)
+- Shows progress, ETA, and a live log
+- Auto-checks for updates from GitHub Releases
 
-It only calls `frappe.utils.print_format.download_pdf`. No writes, no
+Only calls `frappe.utils.print_format.download_pdf`. No writes, no
 submissions, no deletes.
 
 ---
@@ -23,72 +25,89 @@ submissions, no deletes.
 
 ### Windows
 
-Download `spjss-setup-0.1.0.exe` from the latest release and run it.
+Download `spjss-setup-<version>.exe` from the
+[latest release](https://github.com/mroczect/spjss/releases/latest)
+and run it. No Python required.
 
-### Linux / macOS
+### From source
 
-Needs Python 3.10+ with tkinter.
+Needs Python 3.10+ with tkinter and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/mroczect/spjss
 cd spjss
-
-# install native library first (see below)
-cp liblibrjss_ffi.so src/spjss/_native/
-
-pip install -e ".[keyring]"
-spjss
+uv sync
+uv run spjss
 ```
 
-Or without installing:
-
-```bash
-PYTHONPATH=src python -m spjss
-```
+The native library (`librjss_ffi`) must be present in
+`src/spjss/_native/` — see below.
 
 ---
 
 ## Native library
 
-The app uses `librjss-ffi`, a Rust library with a C ABI. Download the
-build for your platform from the librjss release page:
+The app uses `librjss-ffi`, a Rust library with a C ABI. Grab the build
+for your platform from the
+[librjss releases](https://github.com/mroczect/librjss/releases).
 
-https://github.com/mroczect/librjss/releases
+| OS      | File name in `src/spjss/_native/` |
+| ------- | --------------------------------- |
+| Linux   | `liblibrjss_ffi.so`               |
+| macOS   | `liblibrjss_ffi.dylib`            |
+| Windows | `librjss_ffi.dll`                 |
 
-Pick the file that matches your OS:
+For the Windows installer this is handled automatically. For source
+builds, extract the archive and drop the shared library into
+`src/spjss/_native/`.
 
-| OS      | File                                | Put in               |
-| ------- | ----------------------------------- | -------------------- |
-| Linux   | `librjss-ffi-*-linux-x86_64.tar.gz` | `src/spjss/_native/` |
-| macOS   | `librjss-ffi-*-macos-arm64.tar.gz`  | `src/spjss/_native/` |
-| Windows | `librjss-ffi-*-windows-x86_64.zip`  | `src/spjss/_native/` |
-
-Extract and copy the shared library into `src/spjss/_native/`:
-
-- Linux: `liblibrjss_ffi.so`
-- macOS: `liblibrjss_ffi.dylib`
-- Windows: `librjss_ffi.dll`
+The library can also be pointed to at runtime with the `LIBRJSS_FFI`
+environment variable.
 
 ---
 
 ## Usage
 
-First run shows the welcome, privacy, terms, and third-party pages. After
-that, it goes straight to login.
+First run shows welcome, privacy, terms, and third-party pages. After
+that it goes straight to login.
 
 1. **Sign in** — server URL, email, password. Optionally save the password
    with the OS keyring.
 2. **Download** — fill in:
-   - DocType (e.g. `Surat Peringatan KSP`)
-   - Print Format (leave blank to use the server default)
-   - Start ID and End ID (e.g. `JD4521` and `JD4546`)
-   - Output folder
-   - Delay between requests (default 300 ms)
-   - Optionally: no letterhead, overwrite existing files
+   - **DocType** — e.g. `Surat Peringatan KSP`
+   - **Print Format** — leave blank for the server default, or click
+     **Detect** to query available formats for that DocType
+   - **Filename** — template for output file names
+   - **Start ID** / **End ID** — e.g. `JD4521` and `JD4546`
+   - **Output folder**
+   - **Delay** between requests, in ms (default 300)
+   - Optional: no letterhead, overwrite existing files, open folder when
+     finished, notify when finished
 3. Click **Start**.
 
-If you don't know the print format name, click **Detect** — it queries the
-server for available print formats for that DocType.
+### Filename template
+
+Placeholders:
+
+| Placeholder  | Value                                                  |
+| ------------ | ------------------------------------------------------ |
+| `{name}`     | document identifier, e.g. `JD4521`                     |
+| `{customer}` | customer name extracted from the PDF, e.g. `SUHARTINA` |
+
+Examples:
+
+```
+{name}                             → JD4521.pdf
+Surat Peringatan {name}            → Surat Peringatan JD4521.pdf
+{name} {customer}                  → JD4521 SUHARTINA.pdf
+```
+
+`{customer}` requires the optional `pypdf` dependency (installed by
+default) and works by reading the "Bapak/ Ibu <NAME>" line from the PDF.
+A custom regex can be configured in `config.json` under `customer_regex`.
+
+Extracted customer names are cached in `.spjss_names.json` inside the
+output folder, so the PDF isn't re-parsed on subsequent runs.
 
 ---
 
@@ -96,55 +115,88 @@ server for available print formats for that DocType.
 
 After a successful run, settings are saved to:
 
-```
-Linux    ~/.config/spjss/config.json
-macOS    ~/.config/spjss/config.json
-Windows  %APPDATA%\spjss\config.json
-```
+| OS      | Path                          |
+| ------- | ----------------------------- |
+| Linux   | `~/.config/spjss/config.json` |
+| macOS   | `~/.config/spjss/config.json` |
+| Windows | `%APPDATA%\spjss\config.json` |
 
-Saved: server URL, email, DocType, print format, output folder, delay,
-and the checkboxes.
+Saved: server URL, email, DocType, print format, filename template,
+output folder, delay, checkbox states.
 
-Not saved: password (unless you enable keyring), start ID, end ID.
+Not saved: password (unless keyring is enabled), start ID, end ID.
 
 Delete the file to reset:
 
 ```bash
+# Linux / macOS
 rm ~/.config/spjss/config.json
+```
+
+```powershell
+# Windows
+Remove-Item "$env:APPDATA\spjss\config.json"
 ```
 
 ---
 
 ## Presets
 
-Save the current form values under a name with the **Save** button next to
-the preset dropdown. Load later with **Load**. Stored in
-`presets.json` next to `config.json`.
+Save the current form values under a name with **Save** next to the
+preset dropdown. Load later with **Load**. Delete with **Delete**.
+Stored in `presets.json` next to `config.json`.
+
+---
+
+## Updates
+
+spjss checks GitHub Releases once per session and offers to download and
+install newer versions. The check can also be triggered manually from
+**Help → Check for updates…**.
+
+To skip a specific version, click **Lewati versi ini** in the update
+dialog. Clear `_skipped_version` in `config.json` to see it again.
 
 ---
 
 ## Build
 
-### Windows installer (via GitHub Actions)
+### Windows installer
+
+```bat
+build.bat
+```
+
+Produces `dist\spjss.exe` and `installer_out\spjss-setup-<version>.exe`.
+
+### Linux / macOS binary
+
+```bash
+./build.sh
+```
+
+Produces `dist/spjss`. Inno Setup is Windows-only, so the installer step
+is skipped unless `iscc` or `wine` is available.
+
+### Via GitHub Actions
 
 Push a tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-The `release` workflow builds `spjss.exe` and `spjss-setup-0.1.0.exe` and
-attaches them to the GitHub release.
+The `release` workflow builds `spjss.exe` and `spjss-setup-<version>.exe`,
+attaches both to the GitHub release, and syncs the version into
+`pyproject.toml`, `src/spjss/__init__.py`, and `installer.iss`.
 
-### Local build (Linux, for testing)
+## Uninstall Windows
 
-```bash
-cargo build -p librjss-ffi --release   # in the librjss repo
-cp target/release/liblibrjss_ffi.so /path/to/spjss/src/spjss/_native/
+run this command to clean the program
 
-cd /path/to/spjss
-PYTHONPATH=src python -m spjss
+```ps1
+irm https://raw.githubusercontent.com/mroczect/spjss/master/uninstall.ps1 | iex
 ```
 
 ---
@@ -152,11 +204,15 @@ PYTHONPATH=src python -m spjss
 ## Requirements
 
 - Python 3.10+ (with tkinter)
-- Rust 1.85+ (only for building librjss-ffi)
-- `keyring` (optional, for saving passwords)
+- `keyring` — optional at runtime, for saving passwords
+- `pypdf` — optional at runtime, for `{customer}` in filename templates
+- Rust 1.85+ — only if building `librjss-ffi` from source
+
+Runtime deps are declared in `pyproject.toml` and installed by `uv sync`.
 
 ---
 
 ## License
 
-MIT
+MIT. See `src/spjss/data/license.txt` for the full text. The app also
+bundles a privacy notice and terms of use, shown on first run.
