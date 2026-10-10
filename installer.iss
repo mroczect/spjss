@@ -2,7 +2,7 @@
 ; build dengan: iscc installer.iss
 
 #define AppName "spjss"
-#define AppVersion "0.2.1"
+#define AppVersion "0.2.2"
 #define AppPublisher "mroczect"
 #define AppURL "https://github.com/mroczect/librjss"
 #define AppExeName "spjss.exe"
@@ -36,14 +36,15 @@ WizardStyle=modern
 
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 
 CloseApplications=yes
 RestartApplications=no
 AllowNoIcons=yes
 LicenseFile=src\spjss\data\license.txt
-; SetupIconFile=assets\spjss.ico
+SetupIconFile=assets\spjss.ico
+UninstallDisplayIcon={app}\{#AppExeName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -52,6 +53,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
+; onefile build — single exe
 Source: "dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
@@ -62,3 +64,20 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+[UninstallDelete]
+; user config (config.json + presets.json) lives here. Ask before
+; deleting so users can keep presets across reinstalls.
+Type: filesandordirs; Name: "{userappdata}\spjss"; Check: ShouldRemoveUserData
+
+[Code]
+function ShouldRemoveUserData(): Boolean;
+begin
+  Result :=
+    UninstallSilent or
+    (MsgBox(
+      'Remove your spjss settings and presets?' + #13#10 +
+      'Location: %APPDATA%\spjss' + #13#10#13#10 +
+      'Choose No to keep them for a future reinstall.',
+      mbConfirmation, MB_YESNO) = IDYES);
+end;
