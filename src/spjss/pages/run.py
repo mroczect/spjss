@@ -178,8 +178,6 @@ class RunPage(Page):
             self.show_next = True
             self.app.refresh_nav()
 
-        # "ok" dari worker wrapper (setelah _job selesai) diabaikan
-        # karena sudah ditangani oleh event "run.done".
 
     def on_next(self):
         self.app.destroy()

@@ -48,7 +48,6 @@ class App(tk.Tk):
         if cfgmod.exists():
             self._log(f"Config loaded from {cfgmod.CONFIG_PATH}")
 
-    # -- navigation --
 
     def _show(self, PageCls, push: bool = True) -> None:
         if self.current is not None:
@@ -108,7 +107,6 @@ class App(tk.Tk):
         prev = self.history.pop()
         self._show(prev, push=False)
 
-    # -- queue --
 
     def _pump(self) -> None:
         try:
@@ -130,7 +128,6 @@ class App(tk.Tk):
             if kind == "err":
                 messagebox.showerror("Error", str(payload))
 
-    # -- misc --
 
     def _log(self, msg: str) -> None:
         log = getattr(self.current, "_log", None)

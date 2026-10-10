@@ -1,17 +1,3 @@
-"""
-Python ctypes binding for librjss-ffi.
-
-The native library must be reachable from this file or via the
-LIBRJSS_FFI environment variable.
-
-    Linux    liblibrjss_ffi.so
-    macOS    liblibrjss_ffi.dylib
-    Windows  librjss_ffi.dll
-
-Build the library with:
-
-    cargo build -p librjss-ffi --release
-"""
 
 from __future__ import annotations
 
@@ -68,7 +54,6 @@ __all__ = [
 ]
 
 
-# ── constants ────────────────────────────────────────────────────────
 
 JSS_OK = 0
 
@@ -118,7 +103,6 @@ _ERROR_NAMES: dict[int, str] = {
 }
 
 
-# ── struct ───────────────────────────────────────────────────────────
 
 class JssClientConfig(Structure):
     _fields_ = [
@@ -135,7 +119,6 @@ class JssClientConfig(Structure):
     ]
 
 
-# ── library loading ──────────────────────────────────────────────────
 
 def _lib_filename() -> str:
     system = platform.system()
@@ -169,8 +152,6 @@ def _target_triple() -> Optional[str]:
 
 
 def _locate_library(explicit: Optional[str] = None) -> str:
-    """Return the absolute path to the shared library, or the bare name
-    if no candidate file exists (letting the OS loader search PATH)."""
 
     if explicit:
         if not os.path.isfile(explicit):
@@ -187,10 +168,8 @@ def _locate_library(explicit: Optional[str] = None) -> str:
     if env:
         candidates.append(env)
 
-    # sibling of this file
     candidates.append(os.path.join(here, name))
 
-    # per-platform subdirectory: lib/linux-x86_64/liblibrjss_ffi.so
     triple = _target_triple()
     if triple:
         candidates.append(os.path.join(here, triple, name))
@@ -198,7 +177,6 @@ def _locate_library(explicit: Optional[str] = None) -> str:
             os.path.join(parent, "target", triple, "release", name)
         )
 
-    # plain cargo target dir
     candidates.append(os.path.join(parent, "target", "release", name))
 
     for path in candidates:
@@ -221,16 +199,13 @@ def _load(path: Optional[str] = None) -> CDLL:
 
 
 def _declare(lib: CDLL) -> None:
-    """Attach restype and argtypes to every exported function."""
 
-    # version / error
     lib.jss_version.restype = c_void_p
     lib.jss_version.argtypes = []
 
     lib.jss_last_error.restype = c_void_p
     lib.jss_last_error.argtypes = []
 
-    # lifecycle
     lib.jss_client_new.restype = c_void_p
     lib.jss_client_new.argtypes = [POINTER(JssClientConfig)]
 
@@ -240,7 +215,6 @@ def _declare(lib: CDLL) -> None:
     lib.jss_client_trace_id.restype = c_int32
     lib.jss_client_trace_id.argtypes = [c_void_p, POINTER(c_void_p)]
 
-    # auth lifecycle
     lib.jss_client_is_authenticated.restype = c_int32
     lib.jss_client_is_authenticated.argtypes = [c_void_p]
 
@@ -253,7 +227,6 @@ def _declare(lib: CDLL) -> None:
     lib.jss_client_ensure_session.restype = c_int32
     lib.jss_client_ensure_session.argtypes = [c_void_p]
 
-    # http verbs
     lib.jss_client_get.restype = c_int32
     lib.jss_client_get.argtypes = [c_void_p, c_char_p, POINTER(c_void_p)]
 
@@ -285,7 +258,6 @@ def _declare(lib: CDLL) -> None:
         c_void_p, c_char_p, c_char_p, POINTER(c_void_p)
     ]
 
-    # documents
     lib.jss_client_get_doc.restype = c_int32
     lib.jss_client_get_doc.argtypes = [
         c_void_p, c_char_p, c_char_p, POINTER(c_void_p)
@@ -306,7 +278,6 @@ def _declare(lib: CDLL) -> None:
         c_void_p, c_char_p, c_char_p, POINTER(c_void_p)
     ]
 
-    # files
     lib.jss_client_upload_file.restype = c_int32
     lib.jss_client_upload_file.argtypes = [
         c_void_p,
@@ -338,7 +309,6 @@ def _declare(lib: CDLL) -> None:
         POINTER(c_size_t),
     ]
 
-    # reports and search
     lib.jss_client_run_report.restype = c_int32
     lib.jss_client_run_report.argtypes = [
         c_void_p, c_char_p, c_char_p, POINTER(c_void_p)
@@ -349,7 +319,6 @@ def _declare(lib: CDLL) -> None:
         c_void_p, c_char_p, c_uint32, c_char_p, POINTER(c_void_p)
     ]
 
-    # boot info
     lib.jss_client_boot_sitename.restype = c_int32
     lib.jss_client_boot_sitename.argtypes = [c_void_p, POINTER(c_void_p)]
 
@@ -371,7 +340,6 @@ def _declare(lib: CDLL) -> None:
     lib.jss_client_is_read_only.restype = c_int32
     lib.jss_client_is_read_only.argtypes = [c_void_p]
 
-    # permissions
     lib.jss_client_can_read.restype = c_int32
     lib.jss_client_can_read.argtypes = [c_void_p, c_char_p]
 
@@ -387,7 +355,6 @@ def _declare(lib: CDLL) -> None:
     lib.jss_client_can_delete.restype = c_int32
     lib.jss_client_can_delete.argtypes = [c_void_p, c_char_p]
 
-    # memory
     lib.jss_string_free.restype = None
     lib.jss_string_free.argtypes = [c_void_p]
 
@@ -398,15 +365,8 @@ def _declare(lib: CDLL) -> None:
 lib = _load()
 
 
-# ── exception ────────────────────────────────────────────────────────
 
 class JssError(Exception):
-    """Error raised by any librjss-ffi call.
-
-    Attributes:
-        code:    int32 error code (negative JSS_ERR_*)
-        message: detail string from jss_last_error()
-    """
 
     def __init__(self, code: int, message: Optional[str] = None) -> None:
         self.code = code
@@ -419,10 +379,8 @@ class JssError(Exception):
         return _ERROR_NAMES.get(self.code, f"UNKNOWN({self.code})")
 
 
-# ── module-level helpers ─────────────────────────────────────────────
 
 def version() -> str:
-    """Return the native library version string."""
     raw = lib.jss_version()
     if not raw:
         return ""
@@ -430,12 +388,6 @@ def version() -> str:
 
 
 def last_error() -> Optional[str]:
-    """Return the last error message for the current thread, or None.
-
-    This uses the module-level library handle. When a client was created
-    with an explicit lib_path, prefer RjssClient.last_error() which uses
-    the same handle the client was built with.
-    """
     raw = lib.jss_last_error()
     if not raw:
         return None
@@ -477,7 +429,6 @@ def _json_payload(value: Union[str, dict, list, None], field: str) -> bytes:
     )
 
 
-# ── client ───────────────────────────────────────────────────────────
 
 class RjssClient:
     """Client for a Frappe / ERPNext backend, backed by librjss-ffi.
@@ -566,7 +517,6 @@ class RjssClient:
         cfg._reserved = 0
         cfg._reserved2 = 0
 
-        # keep cfg alive so ctypes does not free the bytes we assigned
         self._cfg = cfg
 
         handle = self._lib.jss_client_new(byref(cfg))
@@ -577,7 +527,6 @@ class RjssClient:
             )
         self._h = handle
 
-    # lifecycle
 
     def close(self) -> None:
         if self._closed:
@@ -603,7 +552,6 @@ class RjssClient:
         state = "closed" if self._closed else "open"
         return f"<RjssClient {state} trace_id={self.trace_id!r}>"
 
-    # internal
 
     def _handle(self) -> int:
         if self._closed or not self._h:
@@ -638,7 +586,6 @@ class RjssClient:
         finally:
             self._lib.jss_bytes_free(ptr, n)
 
-    # info
 
     @property
     def trace_id(self) -> str:
@@ -655,7 +602,6 @@ class RjssClient:
             self._check(rc)
         return rc == 1
 
-    # auth lifecycle
 
     def authenticate(self) -> None:
         self._check(self._lib.jss_client_authenticate(self._handle()))
@@ -666,7 +612,6 @@ class RjssClient:
     def ensure_session(self) -> None:
         self._check(self._lib.jss_client_ensure_session(self._handle()))
 
-    # http verbs
 
     def get(self, path: str) -> str:
         out = c_void_p()
@@ -759,7 +704,6 @@ class RjssClient:
         self._check(rc)
         return self._take_string(out)
 
-    # documents
 
     def get_doc(self, doctype: str, name: str) -> str:
         out = c_void_p()
@@ -815,7 +759,6 @@ class RjssClient:
         self._check(rc)
         return self._take_string(out)
 
-    # files
 
     def upload_file(
         self,
@@ -878,7 +821,6 @@ class RjssClient:
         self._check(rc)
         return self._take_bytes(out_data, out_len)
 
-    # reports and search
 
     def run_report(
         self,
@@ -914,7 +856,6 @@ class RjssClient:
         self._check(rc)
         return self._take_string(out)
 
-    # boot info
 
     def boot_sitename(self) -> str:
         out = c_void_p()
@@ -976,7 +917,6 @@ class RjssClient:
             self._check(rc)
         return rc == 1
 
-    # permissions
 
     def _bool_call(self, fn_name: str, doctype: str) -> bool:
         rc = getattr(self._lib, fn_name)(
@@ -1001,7 +941,6 @@ class RjssClient:
     def can_delete(self, doctype: str) -> bool:
         return self._bool_call("jss_client_can_delete", doctype)
 
-    # JSON convenience
 
     def get_json(self, path: str) -> Any:
         return _json.loads(self.get(path))
@@ -1024,7 +963,6 @@ class RjssClient:
         return _json.loads(self.post_form(path, pairs))
 
 
-# ── from_env ─────────────────────────────────────────────────────────
 
 def _env(*names: str) -> Optional[str]:
     for name in names:
@@ -1047,23 +985,6 @@ def from_env(
     readonly_guard: Optional[bool] = None,
     lib_path: Optional[str] = None,
 ) -> RjssClient:
-    """Build a client from environment variables.
-
-    Variables:
-
-        JSS_BASE_URL or JSS_URL         required
-        JSS_TOKEN_KEY                   token mode
-        JSS_TOKEN_SECRET                token mode
-        JSS_EMAIL or JSS_USR            session mode
-        JSS_PASSWORD or JSS_PWD         session mode
-        JSS_EXPECTED_SITENAME           optional
-        JSS_TIMEOUT_SECS                default 30
-        JSS_MAX_RETRIES                 default 3
-        JSS_INSECURE_SSL                true/1/yes
-        JSS_READONLY_GUARD              false/0/no disables
-
-    Keyword arguments override the environment.
-    """
 
     base_url = _env("JSS_BASE_URL", "JSS_URL")
     if not base_url:
@@ -1131,7 +1052,6 @@ def from_env(
     return RjssClient(**kwargs)
 
 
-# ── self-test ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print(f"librjss-ffi version : {version()}")

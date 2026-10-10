@@ -1,10 +1,3 @@
-"""Optional password storage via the OS keyring.
-
-If the keyring package is not installed or no backend is available,
-all operations become no-ops and the caller should fall back to
-asking the user every time. No insecure fallback is provided on
-purpose.
-"""
 
 from __future__ import annotations
 

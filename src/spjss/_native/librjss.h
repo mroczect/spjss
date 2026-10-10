@@ -196,7 +196,7 @@ void jss_string_free(char *s);
 void jss_bytes_free(uint8_t *p, uintptr_t len);
 
 #ifdef __cplusplus
-}  // extern "C"
+}  
 #endif  // __cplusplus
 
 #endif  /* LIBRJSS_FFI_H */

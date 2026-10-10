@@ -1,4 +1,3 @@
-"""Named download presets, stored as JSON next to config.json."""
 
 from __future__ import annotations
 
@@ -12,6 +11,7 @@ PRESETS_PATH = cfgmod.CONFIG_DIR / "presets.json"
 _FIELDS = (
     "doctype",
     "print_format",
+    "filename_template",
     "output_dir",
     "delay_ms",
     "no_letterhead",
