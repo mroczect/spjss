@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g. v0.1.0)'
+        description: 'Tag to build (e.g. v0.2.1)'
         required: true
 
 permissions:
@@ -16,7 +16,6 @@ permissions:
 env:
   PYTHON_VERSION: '3.12'
   LIBRJSS_VERSION: 'v2.3.0'
-  APP_NAME: spjss
 
 jobs:
   windows:
@@ -24,69 +23,103 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout spjss
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+          fetch-depth: 0
 
-      - name: Install Python dependencies
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Resolve tag and version
+        id: version
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller keyring
-          python -m pip install -e ".[keyring]"
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $env:GITHUB_REF -replace '^refs/tags/', ''
+          } else {
+            "${{ github.event.inputs.tag }}"
+          }
+          if (-not $tag) { throw "no tag resolved" }
+          $ver = $tag -replace '^v', ''
+          "tag=$tag"      >> $env:GITHUB_OUTPUT
+          "version=$ver"  >> $env:GITHUB_OUTPUT
+          Write-Host "Tag     : $tag"
+          Write-Host "Version : $ver"
 
-      - name: Fetch librjss-ffi DLL from librjss release
+      - name: Sync version into source files
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $v = $env:VERSION
+          Write-Host "Syncing version $v"
+
+          # pyproject.toml — only the top-level [project] version
+          $pyproject = Get-Content pyproject.toml -Raw
+          $pyproject = $pyproject -replace '(?m)^version = "[^"]*"', "version = `"$v`""
+          Set-Content -Path pyproject.toml -Value $pyproject -NoNewline
+
+          # src/spjss/__init__.py
+          $init = Get-Content src/spjss/__init__.py -Raw
+          $init = $init -replace '(?m)^__version__ = "[^"]*"', "__version__ = `"$v`""
+          Set-Content -Path src/spjss/__init__.py -Value $init -NoNewline
+
+          # installer.iss
+          $iss = Get-Content installer.iss -Raw
+          $iss = $iss -replace '(?m)^#define AppVersion "[^"]*"', "#define AppVersion `"$v`""
+          Set-Content -Path installer.iss -Value $iss -NoNewline
+
+          Write-Host "--- verify ---"
+          Select-String -Path pyproject.toml -Pattern '^version = ' | Select-Object -First 1
+          Select-String -Path src/spjss/__init__.py -Pattern '^__version__ = '
+          Select-String -Path installer.iss -Pattern '#define AppVersion'
+
+      - name: Install dependencies
+        run: uv sync --extra dev --frozen
+
+      - name: Fetch librjss-ffi DLL
         shell: pwsh
         run: |
           $base = "https://github.com/mroczect/librjss/releases/download/${{ env.LIBRJSS_VERSION }}"
           New-Item -ItemType Directory -Force -Path src/spjss/_native | Out-Null
 
-          curl.exe -L --fail -o src/spjss/_native/librjss_ffi.dll "$base/librjss_ffi.dll"
+          Write-Host "Downloading $base/librjss_ffi.dll"
+          curl.exe -L --fail --retry 3 -o src/spjss/_native/librjss_ffi.dll "$base/librjss_ffi.dll"
+
           if (-not (Test-Path src/spjss/_native/librjss_ffi.dll)) {
             throw "librjss_ffi.dll download failed"
           }
+          $dll = Get-Item src/spjss/_native/librjss_ffi.dll
+          Write-Host "DLL size: $($dll.Length) bytes"
 
-          curl.exe -L --fail -o src/spjss/_native/librjss.h "$base/librjss.h"
-
-          Get-Item src/spjss/_native/librjss_ffi.dll | Format-List Name, Length
           Get-ChildItem src/spjss/_native
 
       - name: Build spjss.exe with PyInstaller
+        run: uv run pyinstaller spjss.spec --clean --noconfirm
+
+      - name: Verify exe
         shell: pwsh
         run: |
-          python -m PyInstaller `
-            --noconfirm `
-            --clean `
-            --onefile `
-            --windowed `
-            --name spjss `
-            --paths src `
-            --add-data "src\spjss\data;spjss\data" `
-            --add-binary "src\spjss\_native\librjss_ffi.dll;spjss\_native" `
-            --hidden-import keyring.backends.Windows `
-            --collect-submodules keyring.backends `
-            --collect-all keyring `
-            entry.py
-
-          if (-not (Test-Path dist\spjss.exe)) { throw "dist\spjss.exe missing" }
-          Get-Item dist\spjss.exe | Format-List Name, Length
+          if (-not (Test-Path dist/spjss.exe)) { throw "dist/spjss.exe missing" }
+          Get-Item dist/spjss.exe | Format-List Name, Length
 
       - name: Install Inno Setup
         shell: pwsh
-        run: |
-          choco install innosetup --no-progress -y
+        run: choco install innosetup --no-progress -y
 
-      - name: Build installer with Inno Setup
+      - name: Build installer
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
           & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
           Get-ChildItem installer_out
 
       - name: Upload artifacts
@@ -98,28 +131,24 @@ jobs:
             installer_out/spjss-setup-*.exe
           if-no-files-found: error
 
-      - name: Create release and attach assets
+      - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
-            $env:GITHUB_REF -replace '^refs/tags/', ''
-          } else {
-            "${{ github.event.inputs.tag }}"
-          }
-
-          $installer = Get-ChildItem installer_out\spjss-setup-*.exe | Select-Object -First 1
+          $installer = Get-ChildItem installer_out\spjss-setup-*.exe |
+                       Select-Object -First 1
           $exe = Get-Item dist\spjss.exe
 
-          Write-Host "Tag: $tag"
-          Write-Host "Installer: $($installer.FullName)"
-          Write-Host "Exe: $($exe.FullName)"
+          Write-Host "Tag       : $env:TAG"
+          Write-Host "Installer : $($installer.FullName)"
+          Write-Host "Exe       : $($exe.FullName)"
 
-          gh release view $tag 2>$null
+          gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title $tag --generate-notes
+            gh release create $env:TAG --title $env:TAG --generate-notes
           }
 
-          gh release upload $tag $installer.FullName $exe.FullName --clobber
+          gh release upload $env:TAG $installer.FullName $exe.FullName --clobber
