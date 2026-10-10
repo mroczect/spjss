@@ -1,6 +1,6 @@
 [project]
 name = "spjss"
-version = "0.1.0"
+version = "0.2.0"
 description = "GUI client for Frappe / ERPNext via librjss-ffi"
 readme = "README.md"
 authors = [
@@ -22,7 +22,10 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business",
 ]
-dependencies = []
+dependencies = [
+    "keyring>=25.7.0",
+    "pypdf>=6.20.0",
+]
 
 [project.optional-dependencies]
 keyring = ["keyring>=24"]
@@ -46,7 +49,6 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-root = "src"
 module-name = "spjss"
-# keep the native library and any non-Python data files in the wheel
 wheel-exclude = [
     "**/__pycache__",
     "**/*.pyc",
@@ -67,22 +69,22 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
-    "SIM", # flake8-simplify
-    "RUF", # ruff-specific
+    "E",   
+    "W",   
+    "F",   
+    "I",   
+    "B",   
+    "UP",  
+    "SIM", 
+    "RUF", 
 ]
 ignore = [
-    "E501",  # line length handled by formatter
+    "E501",  
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "src/spjss/_native/librjss.py" = [
-    "E402",  # module-level import not at top (lib = _load() must run first)
+    "E402",  
 ]
 
 [tool.pytest.ini_options]

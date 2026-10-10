@@ -11,7 +11,11 @@ from .. import config as cfgmod
 from .. import keyring_helper as keyring
 from .. import presets, worker
 from .._native import RjssClient
-from ..downloader import download_range, expand_range
+from ..downloader import (
+    DEFAULT_FILENAME_TEMPLATE,
+    download_range,
+    expand_range,
+)
 from .base import Page
 
 
@@ -29,7 +33,6 @@ class DashboardPage(Page):
         self._run_started_at = 0.0
         self._client_for_test = None
 
-        # ---- toolbar ----
         bar = ttk.Frame(self)
         bar.pack(fill="x", pady=(0, 6))
 
@@ -48,7 +51,6 @@ class DashboardPage(Page):
             side="left", padx=2
         )
 
-        # ---- settings ----
         form = ttk.LabelFrame(self, text="Settings", padding=10)
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
@@ -64,47 +66,54 @@ class DashboardPage(Page):
             row=1, column=2, padx=8
         )
 
-        ttk.Label(form, text="Start ID").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Label(form, text="Filename").grid(row=2, column=0, sticky="w", pady=4)
+        self.e_filename = ttk.Entry(form)
+        self.e_filename.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
+        ttk.Label(
+            form,
+            text="contoh: Surat Peringatan {name}  |  {customer}",
+        ).grid(row=2, column=2, sticky="w")
+
+        ttk.Label(form, text="Start ID").grid(row=3, column=0, sticky="w", pady=4)
         self.e_start = ttk.Entry(form)
-        self.e_start.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
-        ttk.Label(form, text="e.g. JD4521").grid(row=2, column=2, sticky="w")
+        self.e_start.grid(row=3, column=1, sticky="ew", padx=8, pady=4)
+        ttk.Label(form, text="e.g. JD4521").grid(row=3, column=2, sticky="w")
 
-        ttk.Label(form, text="End ID").grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Label(form, text="End ID").grid(row=4, column=0, sticky="w", pady=4)
         self.e_end = ttk.Entry(form)
-        self.e_end.grid(row=3, column=1, sticky="ew", padx=8, pady=4)
-        ttk.Label(form, text="e.g. JD4546").grid(row=3, column=2, sticky="w")
+        self.e_end.grid(row=4, column=1, sticky="ew", padx=8, pady=4)
+        ttk.Label(form, text="e.g. JD4546").grid(row=4, column=2, sticky="w")
 
-        ttk.Label(form, text="Output folder").grid(row=4, column=0, sticky="w", pady=4)
+        ttk.Label(form, text="Output folder").grid(row=5, column=0, sticky="w", pady=4)
         self.e_out = ttk.Entry(form)
-        self.e_out.grid(row=4, column=1, sticky="ew", padx=8, pady=4)
+        self.e_out.grid(row=5, column=1, sticky="ew", padx=8, pady=4)
         ttk.Button(form, text="Browse...", command=self._pick_dir).grid(
-            row=4, column=2, padx=8
+            row=5, column=2, padx=8
         )
 
-        ttk.Label(form, text="Delay (ms)").grid(row=5, column=0, sticky="w", pady=4)
+        ttk.Label(form, text="Delay (ms)").grid(row=6, column=0, sticky="w", pady=4)
         self.e_delay = ttk.Entry(form, width=10)
-        self.e_delay.grid(row=5, column=1, sticky="w", padx=8, pady=4)
+        self.e_delay.grid(row=6, column=1, sticky="w", padx=8, pady=4)
 
         self.v_no_letterhead = ttk.Checkbutton(form, text="No letterhead")
-        self.v_no_letterhead.grid(row=6, column=1, sticky="w", padx=8, pady=2)
+        self.v_no_letterhead.grid(row=7, column=1, sticky="w", padx=8, pady=2)
 
         self.v_overwrite = ttk.Checkbutton(form, text="Overwrite existing files")
-        self.v_overwrite.grid(row=7, column=1, sticky="w", padx=8, pady=2)
+        self.v_overwrite.grid(row=8, column=1, sticky="w", padx=8, pady=2)
 
         self.v_open_after = ttk.Checkbutton(
             form, text="Open output folder when finished"
         )
-        self.v_open_after.grid(row=8, column=1, sticky="w", padx=8, pady=2)
+        self.v_open_after.grid(row=9, column=1, sticky="w", padx=8, pady=2)
 
         self.v_notify = ttk.Checkbutton(form, text="Notify when finished")
-        self.v_notify.grid(row=9, column=1, sticky="w", padx=8, pady=2)
+        self.v_notify.grid(row=10, column=1, sticky="w", padx=8, pady=2)
 
         self.lbl_form_error = ttk.Label(
             form, text="", foreground="#b00020", wraplength=600
         )
-        self.lbl_form_error.grid(row=10, column=1, sticky="w", padx=8, pady=(4, 0))
+        self.lbl_form_error.grid(row=11, column=1, sticky="w", padx=8, pady=(4, 0))
 
-        # ---- actions ----
         act = ttk.Frame(self, padding=(0, 8))
         act.pack(fill="x")
 
@@ -146,14 +155,12 @@ class DashboardPage(Page):
         self.lbl_status = ttk.Label(act, text="Ready")
         self.lbl_status.pack(side="right", padx=12)
 
-        # ---- progress ----
         self.pbar = ttk.Progressbar(self, mode="determinate")
         self.pbar.pack(fill="x", pady=(0, 4))
 
         self.lbl_eta = ttk.Label(self, text="")
         self.lbl_eta.pack(anchor="w", pady=(0, 6))
 
-        # ---- log ----
         logf = ttk.LabelFrame(self, text="Activity log", padding=4)
         logf.pack(fill="both", expand=True)
 
@@ -170,12 +177,17 @@ class DashboardPage(Page):
         sb.pack(side="right", fill="y")
         self.txt.pack(side="left", fill="both", expand=True)
 
-    # ---- lifecycle ----
 
     def on_enter(self) -> None:
         s = self.app.state
         self._prefill(self.e_doctype, s.get("doctype", ""))
         self._prefill(self.cb_format, s.get("print_format", ""))
+        self._prefill(
+            self.e_filename,
+            s.get("filename_template", DEFAULT_FILENAME_TEMPLATE),
+        )
+        if not self.e_filename.get():
+            self.e_filename.insert(0, DEFAULT_FILENAME_TEMPLATE)
         self._prefill(self.e_out, s.get("output_dir", ""))
         self._prefill(self.e_delay, str(s.get("delay_ms", "300")))
         if not self.e_delay.get():
@@ -215,7 +227,6 @@ class DashboardPage(Page):
         elif not widget.get():
             widget.insert(0, value)
 
-    # ---- presets ----
 
     def _refresh_presets(self) -> None:
         names = presets.list_names()
@@ -227,6 +238,8 @@ class DashboardPage(Page):
         return {
             "doctype": self.e_doctype.get().strip(),
             "print_format": self.cb_format.get().strip(),
+            "filename_template": self.e_filename.get().strip()
+            or DEFAULT_FILENAME_TEMPLATE,
             "output_dir": self.e_out.get().strip(),
             "delay_ms": self.e_delay.get().strip() or "300",
             "no_letterhead": bool(self.v_no_letterhead.instate(["selected"])),
@@ -239,6 +252,11 @@ class DashboardPage(Page):
             self.e_doctype.insert(0, values["doctype"] or "")
         if values.get("print_format") is not None:
             self.cb_format.set(values["print_format"] or "")
+        if values.get("filename_template") is not None:
+            self.e_filename.delete(0, "end")
+            self.e_filename.insert(
+                0, values["filename_template"] or DEFAULT_FILENAME_TEMPLATE
+            )
         if values.get("output_dir") is not None:
             self.e_out.delete(0, "end")
             self.e_out.insert(0, values["output_dir"] or "")
@@ -298,7 +316,6 @@ class DashboardPage(Page):
             self.cb_preset.set("")
             self._refresh_presets()
 
-    # ---- form helpers ----
 
     def _pick_dir(self) -> None:
         cur = self.e_out.get().strip() or str(Path.home())
@@ -311,6 +328,7 @@ class DashboardPage(Page):
         s = dict(self.app.state)
         doctype = self.e_doctype.get().strip()
         fmt = self.cb_format.get().strip()
+        filename_template = self.e_filename.get().strip() or DEFAULT_FILENAME_TEMPLATE
         start = self.e_start.get().strip().upper()
         end = self.e_end.get().strip().upper()
         out = self.e_out.get().strip()
@@ -334,6 +352,17 @@ class DashboardPage(Page):
             self.lbl_form_error.config(text="Delay cannot be negative.")
             return None
 
+        # validate template: only {name} and {customer} are allowed
+        if "{" in filename_template or "}" in filename_template:
+            try:
+                filename_template.format(name="TEST", customer="TEST")
+            except (KeyError, IndexError, ValueError) as e:
+                self.lbl_form_error.config(
+                    text=f"Filename template invalid: {e}. "
+                    f"Use only {{name}} and {{customer}}."
+                )
+                return None
+
         out_path = Path(out).expanduser()
         if not out_path.is_absolute():
             out_path = Path.cwd() / out_path
@@ -341,6 +370,7 @@ class DashboardPage(Page):
         s.update(
             doctype=doctype,
             print_format=fmt,
+            filename_template=filename_template,
             start=start,
             end=end,
             output_dir=str(out_path),
@@ -353,7 +383,6 @@ class DashboardPage(Page):
         self.app.state.update(s)
         return s
 
-    # ---- actions ----
 
     def _on_test(self) -> None:
         s = self._collect()
@@ -503,6 +532,7 @@ class DashboardPage(Page):
         self._log(f"last    : {names[-1]}")
         self._log(f"doctype : {s['doctype']}")
         self._log(f"format  : {s['print_format'] or '(default)'}")
+        self._log(f"filename: {s.get('filename_template', DEFAULT_FILENAME_TEMPLATE)}")
         self._log(f"output  : {s['output_dir']}")
 
         self._running = True
@@ -570,7 +600,6 @@ class DashboardPage(Page):
         self.app.history.clear()
         self.app._show(LoginPage, push=False)
 
-    # ---- background job ----
 
     def _job(self, s: dict, names: list[str]) -> None:
         out_dir = Path(s["output_dir"])
@@ -598,6 +627,8 @@ class DashboardPage(Page):
                 delay_ms=s["delay_ms"],
                 no_letterhead=s["no_letterhead"],
                 overwrite=s["overwrite"],
+                filename_template=s.get("filename_template", DEFAULT_FILENAME_TEMPLATE),
+                customer_regex=s.get("customer_regex") or None,
                 on_progress=lambda i, t, r: self.app.queue.put(
                     ("run.progress", (i, t, r))
                 ),
@@ -614,7 +645,6 @@ class DashboardPage(Page):
             except Exception:
                 pass
 
-    # ---- event handler ----
 
     def handle(self, kind: str, payload) -> None:
         if kind == "run.login":
@@ -641,7 +671,17 @@ class DashboardPage(Page):
                     self._log(f"[{i}/{total}] {r.name}  skipped (already exists)")
                 else:
                     kb = r.bytes / 1024.0
-                    self._log(f"[{i}/{total}] {r.name}  ok  {kb:.1f} KB")
+                    if getattr(r, "extraction_failed", False):
+                        self._log(
+                            f"[{i}/{total}] {r.name}  ok  {kb:.1f} KB  "
+                            f"(nama customer tidak terbaca, fallback ke ID)"
+                        )
+                    elif getattr(r, "customer", None) and r.customer != r.name:
+                        self._log(
+                            f"[{i}/{total}] {r.name}  ok  {kb:.1f} KB  ({r.customer})"
+                        )
+                    else:
+                        self._log(f"[{i}/{total}] {r.name}  ok  {kb:.1f} KB")
             else:
                 self._log(f"[{i}/{total}] {r.name}  FAILED: {r.error}")
                 if r.name not in self._failed:
@@ -678,7 +718,6 @@ class DashboardPage(Page):
 
             self.lbl_status.config(text=f"{summary.ok} ok / {summary.failed} failed")
 
-            # persist config (no password)
             s = self.app.state
             cfgmod.save(
                 {
@@ -688,6 +727,10 @@ class DashboardPage(Page):
                     "remember_password": s.get("remember_password", False),
                     "doctype": s.get("doctype", ""),
                     "print_format": s.get("print_format", ""),
+                    "filename_template": s.get(
+                        "filename_template", DEFAULT_FILENAME_TEMPLATE
+                    ),
+                    "customer_regex": s.get("customer_regex", ""),
                     "output_dir": s.get("output_dir", ""),
                     "delay_ms": str(s.get("delay_ms", 300)),
                     "no_letterhead": s.get("no_letterhead", False),
@@ -770,7 +813,6 @@ class DashboardPage(Page):
         self.txt.see("end")
 
 
-# ---- helpers ----
 
 
 def _fmt_duration(seconds: float) -> str:

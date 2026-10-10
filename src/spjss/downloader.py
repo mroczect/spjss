@@ -4,11 +4,14 @@ Batch downloader for Frappe print-format PDFs.
 Public API:
     expand_range(start, end, max_items=1000) -> list[str]
     download_one(client, doctype, name, fmt, out_dir, ...) -> DownloadResult
-    download_range(client, doctype, names, fmt, out_dir, ...) -> list[DownloadResult]
+    download_range(client, doctype, names, fmt, out_dir, ...) -> BatchSummary
 """
 
 from __future__ import annotations
 
+import io
+import json
+import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -16,13 +19,26 @@ from pathlib import Path
 
 from ._native import JssError, RjssClient
 
+# ── optional PDF text extraction ─────────────────────────────────────
+
+try:
+    from pypdf import PdfReader as _PdfReader  # type: ignore
+except ImportError:
+    try:
+        from PyPDF2 import PdfReader as _PdfReader  # type: ignore
+    except ImportError:
+        _PdfReader = None  # type: ignore
+
+
 # ── constants ────────────────────────────────────────────────────────
 
 DEFAULT_PRINT_FORMAT = "Standard"
 DEFAULT_MAX_RANGE = 1000
 DEFAULT_DELAY_MS = 300
+DEFAULT_FILENAME_TEMPLATE = "{name}"
 MAX_FILENAME_LEN = 200
 PDF_MAGIC = b"%PDF-"
+NAME_CACHE_FILE = ".spjss_names.json"
 
 
 # ── result ───────────────────────────────────────────────────────────
@@ -36,6 +52,8 @@ class DownloadResult:
     error: str | None = None
     bytes: int = 0
     skipped: bool = False
+    customer: str | None = None
+    extraction_failed: bool = False
 
     @property
     def failed(self) -> bool:
@@ -46,7 +64,8 @@ class DownloadResult:
             return f"{self.name}: skip (sudah ada)"
         if self.ok:
             kb = self.bytes / 1024.0
-            return f"{self.name}: ok ({kb:.1f} KB)"
+            tag = f" [{self.customer}]" if self.customer else ""
+            return f"{self.name}: ok ({kb:.1f} KB){tag}"
         return f"{self.name}: gagal ({self.error})"
 
 
@@ -54,7 +73,6 @@ class DownloadResult:
 
 
 def _split_id(value: str) -> tuple[str, int]:
-    """Split an identifier like 'JD4521' into ('JD', 4521)."""
     value = value.strip()
     i = 0
     while i < len(value) and not value[i].isdigit():
@@ -75,20 +93,8 @@ def expand_range(
     end: str,
     max_items: int = DEFAULT_MAX_RANGE,
 ) -> list[str]:
-    """Expand 'JD4521'..'JD4546' into an inclusive list of identifiers.
-
-    Rules:
-      - both start and end must be non-empty
-      - both must use the same letter prefix
-      - the numeric part of start must be <= the numeric part of end
-      - the total count must not exceed max_items
-
-    Returns the list in ascending numeric order, zero-padded to the
-    width of the larger number so the identifiers look uniform.
-    """
     start = start.strip().upper()
     end = end.strip().upper()
-
     if not start:
         raise ValueError("Start ID wajib diisi.")
     if not end:
@@ -119,25 +125,16 @@ _CONTROL_CHARS = {chr(i) for i in range(0x20)} | {chr(0x7F)}
 
 
 def _safe_filename(name: str) -> str:
-    """Return a filesystem-safe stem for a document name.
-
-    Removes path separators, control characters, and other characters
-    that are illegal on Windows or dangerous on POSIX. Enforces a
-    maximum length so we never exceed NAME_MAX on any platform.
-    """
     cleaned: list[str] = []
     for ch in name:
         if ch in _FORBIDDEN_CHARS or ch in _CONTROL_CHARS:
             cleaned.append("_")
         else:
             cleaned.append(ch)
-
     stem = "".join(cleaned).strip().rstrip(".")
-
     if not stem:
         raise ValueError(f"nama dokumen tidak valid: {name!r}")
 
-    # Windows reserved names
     upper = stem.upper()
     reserved = {
         "CON",
@@ -149,14 +146,156 @@ def _safe_filename(name: str) -> str:
     }
     if upper in reserved:
         stem = f"_{stem}"
-
     if len(stem) > MAX_FILENAME_LEN:
         stem = stem[:MAX_FILENAME_LEN]
-
     return stem
 
 
-# ── single download ──────────────────────────────────────────────────
+# ── template rendering ───────────────────────────────────────────────
+
+_STRING_FORMATTER = __import__("string").Formatter()
+
+
+def _template_uses_customer(template: str) -> bool:
+    """Return True if the template references the {customer} placeholder."""
+    if not template:
+        return False
+    try:
+        for _, field_name, _, _ in _STRING_FORMATTER.parse(template):
+            if field_name == "customer":
+                return True
+    except Exception:
+        # invalid template; let _render_filename raise a proper error
+        pass
+    return False
+
+
+def _render_filename(
+    template: str,
+    name: str,
+    customer: str | None = None,
+) -> str:
+    """Render the filename template.
+
+    Placeholders:
+        {name}      document identifier, e.g. JD4521
+        {customer}  customer name extracted from the PDF, e.g. SUHARTINA
+    """
+    tmpl = (template or "").strip() or DEFAULT_FILENAME_TEMPLATE
+    values = {
+        "name": name,
+        "customer": customer if customer is not None else "",
+    }
+    try:
+        return tmpl.format(**values)
+    except (KeyError, IndexError, ValueError) as e:
+        raise ValueError(f"template nama file tidak valid: {tmpl!r} ({e})")
+
+
+# ── PDF text extraction ──────────────────────────────────────────────
+
+_DEFAULT_CUSTOMER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # "Bapak/ Ibu SUHARTINA" followed by newline, JL., Perihal, etc.
+    re.compile(
+        r"Bapak\s*/\s*Ibu\s+"
+        r"([A-Z][A-Za-z\s\.'\-]{1,80}?)"
+        r"(?=\s*(?:Jl\.|JL\.|Perihal|PERIHAL|Alamat|ALAMAT|$))",
+        re.MULTILINE,
+    ),
+    # Fallback: everything up to the end of the line
+    re.compile(
+        r"Bapak\s*/\s*Ibu\s+([^\n\r]{1,80})",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str | None:
+    """Return the concatenated text of all pages, or None on failure."""
+    if _PdfReader is None:
+        return None
+    try:
+        reader = _PdfReader(io.BytesIO(pdf_bytes))
+    except Exception:
+        return None
+    parts: list[str] = []
+    try:
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                parts.append("")
+    except Exception:
+        return None
+    return "\n".join(parts)
+
+
+def _extract_customer_name(
+    pdf_bytes: bytes,
+    custom_pattern: str | None = None,
+) -> str | None:
+    """Extract the customer name from a PDF.
+
+    Tries the caller-supplied regex first (if any), then the built-in
+    patterns that match common Indonesian letter openings such as
+    'Bapak/ Ibu <NAME>'. Returns None if nothing is found.
+    """
+    text = _extract_pdf_text(pdf_bytes)
+    if not text:
+        return None
+
+    if custom_pattern:
+        try:
+            rx = re.compile(custom_pattern, re.MULTILINE | re.IGNORECASE)
+            m = rx.search(text)
+            if m:
+                captured = m.group(1) if m.groups() else m.group(0)
+                cleaned = captured.strip().strip(".,;:")
+                if cleaned:
+                    return cleaned
+        except re.error:
+            pass
+
+    for rx in _DEFAULT_CUSTOMER_PATTERNS:
+        m = rx.search(text)
+        if m:
+            cleaned = m.group(1).strip().strip(".,;:")
+            # collapse internal whitespace
+            cleaned = re.sub(r"\s+", " ", cleaned)
+            if cleaned:
+                return cleaned
+    return None
+
+
+# ── name cache (name -> customer) ────────────────────────────────────
+
+
+def _load_name_cache(out_dir: Path) -> dict[str, str]:
+    p = out_dir / NAME_CACHE_FILE
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text("utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def _save_name_cache(out_dir: Path, cache: dict[str, str]) -> None:
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        p = out_dir / NAME_CACHE_FILE
+        p.write_text(
+            json.dumps(cache, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+# ── PDF sanity ───────────────────────────────────────────────────────
 
 
 def _looks_like_pdf(data: bytes) -> bool:
@@ -164,7 +303,6 @@ def _looks_like_pdf(data: bytes) -> bool:
 
 
 def _error_snippet(data: bytes, limit: int = 120) -> str:
-    """Decode the first bytes of a non-PDF response for the log."""
     if not data:
         return "(kosong)"
     chunk = data[:limit]
@@ -178,6 +316,9 @@ def _error_snippet(data: bytes, limit: int = 120) -> str:
     return text
 
 
+# ── single download ──────────────────────────────────────────────────
+
+
 def download_one(
     client: RjssClient,
     doctype: str,
@@ -186,50 +327,66 @@ def download_one(
     out_dir: Path,
     no_letterhead: bool = False,
     overwrite: bool = False,
+    filename_template: str = DEFAULT_FILENAME_TEMPLATE,
+    customer_regex: str | None = None,
 ) -> DownloadResult:
-    """Download a single document as PDF.
-
-    Returns a DownloadResult. Never raises for network or server
-    errors: those are captured and returned with ok=False.
-    Raises ValueError only for invalid arguments that the caller
-    should have caught before calling.
-    """
     if not doctype or not doctype.strip():
         raise ValueError("doctype tidak boleh kosong")
     if not name or not name.strip():
         raise ValueError("name tidak boleh kosong")
 
     out_dir = Path(out_dir)
-
-    # Frappe requires a format parameter. Empty means "use the server
-    # default", but the FFI signature insists on a non-empty string,
-    # so we pass the conventional default name.
     fmt_effective = fmt.strip() if fmt else DEFAULT_PRINT_FORMAT
+    uses_customer = _template_uses_customer(filename_template)
 
-    # resolve the destination path
-    try:
-        stem = _safe_filename(name)
-    except ValueError as e:
-        return DownloadResult(name=name, ok=False, error=str(e))
-
-    dest = out_dir / f"{stem}.pdf"
-
-    # skip if already present and overwrite is off
-    if dest.is_file() and not overwrite:
+    # ── fast path: we can compute the destination without downloading
+    if not uses_customer:
         try:
-            size = dest.stat().st_size
-        except OSError:
-            size = 0
-        return DownloadResult(
-            name=name,
-            ok=True,
-            path=dest,
-            bytes=size,
-            error="skip (sudah ada)",
-            skipped=True,
-        )
+            stem = _safe_filename(_render_filename(filename_template, name))
+        except ValueError as e:
+            return DownloadResult(name=name, ok=False, error=str(e))
+        dest = out_dir / f"{stem}.pdf"
+        if dest.is_file() and not overwrite:
+            try:
+                size = dest.stat().st_size
+            except OSError:
+                size = 0
+            return DownloadResult(
+                name=name,
+                ok=True,
+                path=dest,
+                bytes=size,
+                error="skip (sudah ada)",
+                skipped=True,
+            )
 
-    # fetch from server
+    # ── cache lookup for customer-based templates
+    cache: dict[str, str] = {}
+    if uses_customer:
+        cache = _load_name_cache(out_dir)
+        cached = cache.get(name)
+        if cached:
+            try:
+                stem = _safe_filename(_render_filename(filename_template, name, cached))
+                dest = out_dir / f"{stem}.pdf"
+                if dest.is_file() and not overwrite:
+                    try:
+                        size = dest.stat().st_size
+                    except OSError:
+                        size = 0
+                    return DownloadResult(
+                        name=name,
+                        ok=True,
+                        path=dest,
+                        bytes=size,
+                        error="skip (sudah ada)",
+                        skipped=True,
+                        customer=cached,
+                    )
+            except ValueError:
+                pass
+
+    # ── fetch from server
     try:
         data = client.download_pdf_kartu_piutang(
             doctype, name, fmt_effective, no_letterhead
@@ -239,7 +396,6 @@ def download_one(
     except Exception as e:
         return DownloadResult(name=name, ok=False, error=f"unexpected: {e!r}")
 
-    # sanity check the payload
     if not data:
         return DownloadResult(name=name, ok=False, error="response kosong")
     if not _looks_like_pdf(data):
@@ -249,16 +405,60 @@ def download_one(
             error=f"bukan PDF (server mengembalikan): {_error_snippet(data)}",
         )
 
-    # write to disk
+    # ── extract customer name if needed
+    customer: str | None = None
+    extraction_failed = False
+    if uses_customer:
+        customer = _extract_customer_name(data, customer_regex)
+        if not customer:
+            if _PdfReader is None:
+                return DownloadResult(
+                    name=name,
+                    ok=False,
+                    error=(
+                        "template '{customer}' butuh modul 'pypdf' "
+                        "(install: pip install pypdf)"
+                    ),
+                )
+            customer = name
+            extraction_failed = True
+
+    # ── compute destination
+    try:
+        stem = _safe_filename(_render_filename(filename_template, name, customer))
+    except ValueError as e:
+        return DownloadResult(name=name, ok=False, error=str(e), customer=customer)
+
+    dest = out_dir / f"{stem}.pdf"
+
+    if dest.is_file() and not overwrite:
+        try:
+            size = dest.stat().st_size
+        except OSError:
+            size = 0
+        if uses_customer and customer and not extraction_failed:
+            cache[name] = customer
+            _save_name_cache(out_dir, cache)
+        return DownloadResult(
+            name=name,
+            ok=True,
+            path=dest,
+            bytes=size,
+            error="skip (sudah ada)",
+            skipped=True,
+            customer=customer,
+        )
+
+    # ── write to disk
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         return DownloadResult(
-            name=name, ok=False, error=f"gagal buat folder {out_dir}: {e}"
+            name=name,
+            ok=False,
+            error=f"gagal buat folder {out_dir}: {e}",
         )
 
-    # write to a temp file first, then rename, so a crash mid-write
-    # never leaves a truncated PDF at the final destination
     tmp = dest.with_suffix(dest.suffix + ".part")
     try:
         tmp.write_bytes(data)
@@ -268,7 +468,9 @@ def download_one(
         except OSError:
             pass
         return DownloadResult(
-            name=name, ok=False, error=f"gagal tulis {dest.name}: {e}"
+            name=name,
+            ok=False,
+            error=f"gagal tulis {dest.name}: {e}",
         )
 
     try:
@@ -278,13 +480,23 @@ def download_one(
             tmp.unlink(missing_ok=True)
         except OSError:
             pass
-        return DownloadResult(name=name, ok=False, error=f"gagal pindahkan file: {e}")
+        return DownloadResult(
+            name=name,
+            ok=False,
+            error=f"gagal pindahkan file: {e}",
+        )
+
+    if uses_customer and customer and not extraction_failed:
+        cache[name] = customer
+        _save_name_cache(out_dir, cache)
 
     return DownloadResult(
         name=name,
         ok=True,
         path=dest,
         bytes=len(data),
+        customer=customer,
+        extraction_failed=extraction_failed,
     )
 
 
@@ -302,7 +514,6 @@ class BatchSummary:
 
     @property
     def downloaded(self) -> int:
-        """Files actually written to disk this run."""
         return self.ok - self.skipped
 
 
@@ -315,15 +526,11 @@ def download_range(
     delay_ms: int = DEFAULT_DELAY_MS,
     no_letterhead: bool = False,
     overwrite: bool = False,
+    filename_template: str = DEFAULT_FILENAME_TEMPLATE,
+    customer_regex: str | None = None,
     on_progress: Callable[[int, int, DownloadResult], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
 ) -> BatchSummary:
-    """Download every name in the iterable.
-
-    Calls on_progress(i, total, result) after each attempt.
-    Stops early if should_stop() returns True, marking the summary
-    as aborted. Never raises for individual failures.
-    """
     names_list = list(names)
     total = len(names_list)
     summary = BatchSummary(total=total)
@@ -344,6 +551,8 @@ def download_range(
             out_dir=out_dir,
             no_letterhead=no_letterhead,
             overwrite=overwrite,
+            filename_template=filename_template,
+            customer_regex=customer_regex,
         )
 
         summary.results.append(result)
@@ -361,8 +570,6 @@ def download_range(
             except Exception:
                 pass
 
-        # do not sleep after the last item, and do not sleep if the
-        # caller has already asked us to stop
         if delay_ms > 0 and i < total:
             if should_stop and should_stop():
                 summary.aborted = True

@@ -2,15 +2,6 @@ from tkinter import ttk
 
 
 class Page(ttk.Frame):
-    """One step of the wizard.
-
-    Subclasses must override build(). They may override:
-      on_enter()  - called every time the page is shown
-      on_next()   - return None to stay, a Page subclass to
-                    navigate to it, "back" to trigger the back
-                    action, or a callable to invoke it
-      on_leave()  - return False to cancel navigation
-    """
 
     title = ""
     step_label = ""
@@ -24,7 +15,6 @@ class Page(ttk.Frame):
         self.app = app
         self.build()
 
-    # -- overridable --
 
     def build(self) -> None:
         raise NotImplementedError
@@ -38,7 +28,6 @@ class Page(ttk.Frame):
     def on_next(self):
         return None
 
-    # -- helpers --
 
     def readonly_text(self, parent, content: str, height: int = 20):
         import tkinter as tk

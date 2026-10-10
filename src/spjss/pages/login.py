@@ -66,7 +66,6 @@ class LoginPage(Page):
         if s.get("remember_password"):
             self.v_remember.state(["selected"])
 
-        # try to load saved password for this email
         email = self.e_email.get().strip()
         if email and not self.e_pw.get() and keyring.is_available():
             saved = keyring.load(email)
@@ -103,13 +102,11 @@ class LoginPage(Page):
         self.app.state["remember_password"] = remember
         self.app.state["insecure_ssl"] = insecure
 
-        # persist password if requested
         if remember and keyring.is_available():
             keyring.save(email, pw)
         elif not remember and keyring.is_available():
             keyring.delete(email)
 
-        # persist non-secret bits to config
         cfgmod.save(
             {
                 "base_url": url,

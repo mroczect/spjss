@@ -13,6 +13,8 @@ DEFAULTS: dict = {
     "remember_password": False,
     "doctype": "",
     "print_format": "",
+    "filename_template": "{name}",
+    "customer_regex": "",
     "output_dir": "",
     "delay_ms": "300",
     "no_letterhead": False,
