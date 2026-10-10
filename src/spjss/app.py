@@ -1,7 +1,9 @@
 import queue
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from . import __version__
 from . import config as cfgmod
 from ._native import version as lib_version
 from .pages import LoginPage, WelcomePage
@@ -17,6 +19,10 @@ class App(tk.Tk):
         self.queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self.state: dict = {}
         self.state.update(cfgmod.load())
+
+        self._update_checked = False
+
+        self._build_menu()
 
         self.nav = ttk.Frame(self, padding=10)
         self.nav.pack(side="bottom", fill="x")
@@ -48,6 +54,60 @@ class App(tk.Tk):
         if cfgmod.exists():
             self._log(f"Config loaded from {cfgmod.CONFIG_PATH}")
 
+    def _build_menu(self) -> None:
+        menubar = tk.Menu(self)
+
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="Check for updates…", command=self._on_menu_update)
+        help_menu.add_separator()
+        help_menu.add_command(label="About spjss", command=self._on_menu_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+        self.config(menu=menubar)
+
+    def _on_menu_update(self) -> None:
+        from . import update_check
+
+        def job() -> None:
+            try:
+                result = update_check.check()
+                self.queue.put(("menu.update", result))
+            except Exception as e:
+                self.queue.put(("menu.update.err", e))
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def _on_menu_about(self) -> None:
+        messagebox.showinfo(
+            "About spjss",
+            f"spjss {__version__}\n"
+            f"librjss-ffi {lib_version()}\n\n"
+            f"Batch PDF downloader for Frappe / ERPNext.\n"
+            f"MIT license — see License menu for details.",
+        )
+
+    def _show_update_auto(self, info) -> None:
+        if self.state.get("_skipped_version") == info.version:
+            return
+        from .update_dialog import UpdateDialog
+
+        UpdateDialog(self, info)
+
+    def _show_update_result(self, result, manual: bool = False) -> None:
+        if result.error:
+            if manual:
+                messagebox.showerror(
+                    "Check for updates", f"Gagal cek update:\n{result.error}"
+                )
+            return
+        if result.has_update:
+            from .update_dialog import UpdateDialog
+
+            dlg = UpdateDialog(self, result.info)
+            if manual:
+                dlg.wait_window()
+        elif manual:
+            messagebox.showinfo("Check for updates", "Sudah versi terbaru.")
 
     def _show(self, PageCls, push: bool = True) -> None:
         if self.current is not None:
@@ -107,7 +167,6 @@ class App(tk.Tk):
         prev = self.history.pop()
         self._show(prev, push=False)
 
-
     def _pump(self) -> None:
         try:
             while True:
@@ -118,6 +177,22 @@ class App(tk.Tk):
         self.after(100, self._pump)
 
     def _dispatch(self, kind: str, payload) -> None:
+        if kind == "menu.update":
+            self._show_update_result(payload, manual=True)
+            return
+        if kind == "menu.update.err":
+            messagebox.showerror("Update", f"Gagal cek update:\n{payload}")
+            return
+        if kind == "update.auto":
+            self._show_update_auto(payload)
+            return
+        if kind == "update.manual":
+            self._show_update_result(payload, manual=True)
+            return
+        if kind == "update.manual.err":
+            messagebox.showerror("Update", f"Gagal cek update:\n{payload}")
+            return
+
         handler = getattr(self.current, "handle", None)
         if callable(handler):
             try:
@@ -127,7 +202,6 @@ class App(tk.Tk):
         else:
             if kind == "err":
                 messagebox.showerror("Error", str(payload))
-
 
     def _log(self, msg: str) -> None:
         log = getattr(self.current, "_log", None)

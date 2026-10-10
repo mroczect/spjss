@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import subprocess
+import threading
 import time
 import tkinter as tk
 from pathlib import Path
@@ -149,6 +150,11 @@ class DashboardPage(Page):
         )
         self.btn_export.pack(side="left", padx=6)
 
+        self.btn_update = ttk.Button(
+            act, text="Check for updates", command=self._on_check_update
+        )
+        self.btn_update.pack(side="left", padx=6)
+
         self.btn_logout = ttk.Button(act, text="Sign out", command=self._on_logout)
         self.btn_logout.pack(side="right")
 
@@ -176,7 +182,6 @@ class DashboardPage(Page):
         self.txt.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.txt.pack(side="left", fill="both", expand=True)
-
 
     def on_enter(self) -> None:
         s = self.app.state
@@ -207,6 +212,10 @@ class DashboardPage(Page):
         user = s.get("email", "")
         self._log(f"Signed in as: {user}" if user else "(not signed in)")
 
+        if not getattr(self.app, "_update_checked", False):
+            self.app._update_checked = True
+            threading.Thread(target=self._job_check_update, daemon=True).start()
+
     def on_next(self):
         self.app._on_close()
         return None
@@ -227,6 +236,29 @@ class DashboardPage(Page):
         elif not widget.get():
             widget.insert(0, value)
 
+    def _on_check_update(self) -> None:
+        self.btn_update.config(state="disabled")
+        self._log("Checking for updates…")
+        threading.Thread(target=self._job_check_update_manual, daemon=True).start()
+
+    def _job_check_update(self) -> None:
+        from .. import update_check
+
+        try:
+            result = update_check.check()
+        except Exception:
+            return
+        if result.has_update:
+            self.app.queue.put(("update.auto", result.info))
+
+    def _job_check_update_manual(self) -> None:
+        from .. import update_check
+
+        try:
+            result = update_check.check()
+            self.app.queue.put(("update.manual", result))
+        except Exception as e:
+            self.app.queue.put(("update.manual.err", e))
 
     def _refresh_presets(self) -> None:
         names = presets.list_names()
@@ -316,7 +348,6 @@ class DashboardPage(Page):
             self.cb_preset.set("")
             self._refresh_presets()
 
-
     def _pick_dir(self) -> None:
         cur = self.e_out.get().strip() or str(Path.home())
         d = filedialog.askdirectory(initialdir=cur)
@@ -352,7 +383,6 @@ class DashboardPage(Page):
             self.lbl_form_error.config(text="Delay cannot be negative.")
             return None
 
-        # validate template: only {name} and {customer} are allowed
         if "{" in filename_template or "}" in filename_template:
             try:
                 filename_template.format(name="TEST", customer="TEST")
@@ -382,7 +412,6 @@ class DashboardPage(Page):
         )
         self.app.state.update(s)
         return s
-
 
     def _on_test(self) -> None:
         s = self._collect()
@@ -600,7 +629,6 @@ class DashboardPage(Page):
         self.app.history.clear()
         self.app._show(LoginPage, push=False)
 
-
     def _job(self, s: dict, names: list[str]) -> None:
         out_dir = Path(s["output_dir"])
         client = RjssClient(
@@ -644,7 +672,6 @@ class DashboardPage(Page):
                 client.close()
             except Exception:
                 pass
-
 
     def handle(self, kind: str, payload) -> None:
         if kind == "run.login":
@@ -811,8 +838,6 @@ class DashboardPage(Page):
     def _log(self, msg: str) -> None:
         self.txt.insert("end", msg + "\n")
         self.txt.see("end")
-
-
 
 
 def _fmt_duration(seconds: float) -> str:

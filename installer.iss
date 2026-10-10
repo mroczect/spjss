@@ -1,5 +1,5 @@
 ; spjss installer script for Inno Setup 6
-; build dengan: iscc installer.iss
+; build: iscc installer.iss
 
 #define AppName "spjss"
 #define AppVersion "0.2.5"
@@ -27,6 +27,10 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 UninstallDisplayName={#AppName} {#AppVersion}
 
+; ── icon ─────────────────────────────────────────────────────────────
+SetupIconFile=assets\spjss.ico                 ; icon di file installer
+UninstallDisplayIcon={app}\{#AppExeName}       ; icon di Add/Remove Programs
+
 OutputDir=installer_out
 OutputBaseFilename=spjss-setup-{#AppVersion}
 Compression=lzma2
@@ -38,8 +42,12 @@ PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
+; ── update-related flags ─────────────────────────────────────────────
+SetupMutex=spjss_setup_mutex
 CloseApplications=yes
-RestartApplications=no
+CloseApplicationsFilter=*.exe
+RestartApplications=yes
+
 AllowNoIcons=yes
 LicenseFile=src\spjss\data\license.txt
 
@@ -50,7 +58,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; onefile build — single exe
 Source: "dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
@@ -60,11 +67,11 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\{#AppExeName}"; \
+  Description: "{cm:LaunchProgram,{#AppName}}"; \
+  Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallDelete]
-; user config (config.json + presets.json) lives here. Ask before
-; deleting so users can keep presets across reinstalls.
 Type: filesandordirs; Name: "{userappdata}\spjss"; Check: ShouldRemoveUserData
 
 [Code]

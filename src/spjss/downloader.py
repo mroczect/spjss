@@ -1,11 +1,3 @@
-"""
-Batch downloader for Frappe print-format PDFs.
-
-Public API:
-    expand_range(start, end, max_items=1000) -> list[str]
-    download_one(client, doctype, name, fmt, out_dir, ...) -> DownloadResult
-    download_range(client, doctype, names, fmt, out_dir, ...) -> BatchSummary
-"""
 
 from __future__ import annotations
 
@@ -19,7 +11,6 @@ from pathlib import Path
 
 from ._native import JssError, RjssClient
 
-# ── optional PDF text extraction ─────────────────────────────────────
 
 try:
     from pypdf import PdfReader as _PdfReader  # type: ignore
@@ -30,7 +21,6 @@ except ImportError:
         _PdfReader = None  # type: ignore
 
 
-# ── constants ────────────────────────────────────────────────────────
 
 DEFAULT_PRINT_FORMAT = "Standard"
 DEFAULT_MAX_RANGE = 1000
@@ -41,7 +31,6 @@ PDF_MAGIC = b"%PDF-"
 NAME_CACHE_FILE = ".spjss_names.json"
 
 
-# ── result ───────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -69,7 +58,6 @@ class DownloadResult:
         return f"{self.name}: gagal ({self.error})"
 
 
-# ── range expansion ──────────────────────────────────────────────────
 
 
 def _split_id(value: str) -> tuple[str, int]:
@@ -118,7 +106,6 @@ def expand_range(
     return [f"{p1}{n:0{width}d}" for n in range(n1, n2 + 1)]
 
 
-# ── filename safety ──────────────────────────────────────────────────
 
 _FORBIDDEN_CHARS = set('<>:"/\\|?*')
 _CONTROL_CHARS = {chr(i) for i in range(0x20)} | {chr(0x7F)}
@@ -151,13 +138,11 @@ def _safe_filename(name: str) -> str:
     return stem
 
 
-# ── template rendering ───────────────────────────────────────────────
 
 _STRING_FORMATTER = __import__("string").Formatter()
 
 
 def _template_uses_customer(template: str) -> bool:
-    """Return True if the template references the {customer} placeholder."""
     if not template:
         return False
     try:
@@ -165,7 +150,6 @@ def _template_uses_customer(template: str) -> bool:
             if field_name == "customer":
                 return True
     except Exception:
-        # invalid template; let _render_filename raise a proper error
         pass
     return False
 
@@ -175,12 +159,6 @@ def _render_filename(
     name: str,
     customer: str | None = None,
 ) -> str:
-    """Render the filename template.
-
-    Placeholders:
-        {name}      document identifier, e.g. JD4521
-        {customer}  customer name extracted from the PDF, e.g. SUHARTINA
-    """
     tmpl = (template or "").strip() or DEFAULT_FILENAME_TEMPLATE
     values = {
         "name": name,
@@ -192,17 +170,14 @@ def _render_filename(
         raise ValueError(f"template nama file tidak valid: {tmpl!r} ({e})")
 
 
-# ── PDF text extraction ──────────────────────────────────────────────
 
 _DEFAULT_CUSTOMER_PATTERNS: tuple[re.Pattern[str], ...] = (
-    # "Bapak/ Ibu SUHARTINA" followed by newline, JL., Perihal, etc.
     re.compile(
         r"Bapak\s*/\s*Ibu\s+"
         r"([A-Z][A-Za-z\s\.'\-]{1,80}?)"
         r"(?=\s*(?:Jl\.|JL\.|Perihal|PERIHAL|Alamat|ALAMAT|$))",
         re.MULTILINE,
     ),
-    # Fallback: everything up to the end of the line
     re.compile(
         r"Bapak\s*/\s*Ibu\s+([^\n\r]{1,80})",
         re.IGNORECASE,
@@ -211,7 +186,6 @@ _DEFAULT_CUSTOMER_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str | None:
-    """Return the concatenated text of all pages, or None on failure."""
     if _PdfReader is None:
         return None
     try:
@@ -234,12 +208,6 @@ def _extract_customer_name(
     pdf_bytes: bytes,
     custom_pattern: str | None = None,
 ) -> str | None:
-    """Extract the customer name from a PDF.
-
-    Tries the caller-supplied regex first (if any), then the built-in
-    patterns that match common Indonesian letter openings such as
-    'Bapak/ Ibu <NAME>'. Returns None if nothing is found.
-    """
     text = _extract_pdf_text(pdf_bytes)
     if not text:
         return None
@@ -260,14 +228,12 @@ def _extract_customer_name(
         m = rx.search(text)
         if m:
             cleaned = m.group(1).strip().strip(".,;:")
-            # collapse internal whitespace
             cleaned = re.sub(r"\s+", " ", cleaned)
             if cleaned:
                 return cleaned
     return None
 
 
-# ── name cache (name -> customer) ────────────────────────────────────
 
 
 def _load_name_cache(out_dir: Path) -> dict[str, str]:
@@ -295,7 +261,6 @@ def _save_name_cache(out_dir: Path, cache: dict[str, str]) -> None:
         pass
 
 
-# ── PDF sanity ───────────────────────────────────────────────────────
 
 
 def _looks_like_pdf(data: bytes) -> bool:
@@ -316,7 +281,6 @@ def _error_snippet(data: bytes, limit: int = 120) -> str:
     return text
 
 
-# ── single download ──────────────────────────────────────────────────
 
 
 def download_one(
@@ -339,7 +303,6 @@ def download_one(
     fmt_effective = fmt.strip() if fmt else DEFAULT_PRINT_FORMAT
     uses_customer = _template_uses_customer(filename_template)
 
-    # ── fast path: we can compute the destination without downloading
     if not uses_customer:
         try:
             stem = _safe_filename(_render_filename(filename_template, name))
@@ -360,7 +323,6 @@ def download_one(
                 skipped=True,
             )
 
-    # ── cache lookup for customer-based templates
     cache: dict[str, str] = {}
     if uses_customer:
         cache = _load_name_cache(out_dir)
@@ -386,7 +348,6 @@ def download_one(
             except ValueError:
                 pass
 
-    # ── fetch from server
     try:
         data = client.download_pdf_kartu_piutang(
             doctype, name, fmt_effective, no_letterhead
@@ -405,7 +366,6 @@ def download_one(
             error=f"bukan PDF (server mengembalikan): {_error_snippet(data)}",
         )
 
-    # ── extract customer name if needed
     customer: str | None = None
     extraction_failed = False
     if uses_customer:
@@ -423,7 +383,6 @@ def download_one(
             customer = name
             extraction_failed = True
 
-    # ── compute destination
     try:
         stem = _safe_filename(_render_filename(filename_template, name, customer))
     except ValueError as e:
@@ -449,7 +408,6 @@ def download_one(
             customer=customer,
         )
 
-    # ── write to disk
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
@@ -500,7 +458,6 @@ def download_one(
     )
 
 
-# ── batch download ───────────────────────────────────────────────────
 
 
 @dataclass

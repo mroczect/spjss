@@ -21,6 +21,8 @@ DEFAULTS: dict = {
     "overwrite": False,
     "open_folder_after": True,
     "notify_on_finish": True,
+    "_skipped_version": "",
+    "last_update_check": 0,
 }
 
 FIELDS_PERSISTED = tuple(DEFAULTS.keys())
