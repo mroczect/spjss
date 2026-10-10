@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== sync deps ==="
+cd "$(dirname "$0")"
+
 uv sync --extra dev
 
-echo "=== clean ==="
 rm -rf build dist
 
-echo "=== pyinstaller ==="
 uv run pyinstaller spjss.spec --clean --noconfirm
 
-echo
-echo "DONE: dist/spjss"
+if command -v iscc >/dev/null 2>&1; then
+  mkdir -p installer_out
+  iscc installer.iss
+  echo "done: installer_out/spjss-setup-0.3.0.exe"
+elif command -v wine >/dev/null 2>&1; then
+  mkdir -p installer_out
+  wine "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" installer.iss
+  echo "done: installer_out/spjss-setup-0.3.0.exe"
+else
+  echo "done: dist/spjss (installer skipped — iscc/wine not found)"
+fi
