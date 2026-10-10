@@ -1,10 +1,10 @@
-; spjss installer script for Inno Setup 6
+; spjss — Inno Setup 6 script
 ; build: iscc installer.iss
 
 #define AppName "spjss"
-#define AppVersion "0.3.0"
+#define AppVersion "0.3.1"
 #define AppPublisher "mroczect"
-#define AppURL "https://github.com/mroczect/librjss"
+#define AppURL "https://github.com/mroczect/spjss"
 #define AppExeName "spjss.exe"
 
 [Setup]
@@ -26,10 +26,10 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 UninstallDisplayName={#AppName} {#AppVersion}
+UninstallDisplayIcon={app}\{#AppExeName}
 
-; ── icon ─────────────────────────────────────────────────────────────
-SetupIconFile=assets\spjss.ico                 ; icon di file installer
-UninstallDisplayIcon={app}\{#AppExeName}       ; icon di Add/Remove Programs
+SetupIconFile=assets\spjss.ico
+LicenseFile=src\spjss\data\license.txt
 
 OutputDir=installer_out
 OutputBaseFilename=spjss-setup-{#AppVersion}
@@ -42,14 +42,12 @@ PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
-; ── update-related flags ─────────────────────────────────────────────
 SetupMutex=spjss_setup_mutex
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
 RestartApplications=yes
 
 AllowNoIcons=yes
-LicenseFile=src\spjss\data\license.txt
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

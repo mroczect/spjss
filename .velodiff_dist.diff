@@ -4628,7 +4628,7 @@ index df916e6..343e927 100644
  echo.
 -echo DONE: installer_out\spjss-setup-0.2.5.exe
 -goto :eof
-+echo done: installer_out\spjss-setup-0.3.0.exe
++echo done: installer_out\spjss-setup-0.3.1.exe
 +exit /b 0
  
  :err
@@ -4660,11 +4660,11 @@ index 3793699..905a8bf 100644
 +if command -v iscc >/dev/null 2>&1; then
 +  mkdir -p installer_out
 +  iscc installer.iss
-+  echo "done: installer_out/spjss-setup-0.3.0.exe"
++  echo "done: installer_out/spjss-setup-0.3.1.exe"
 +elif command -v wine >/dev/null 2>&1; then
 +  mkdir -p installer_out
 +  wine "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" installer.iss
-+  echo "done: installer_out/spjss-setup-0.3.0.exe"
++  echo "done: installer_out/spjss-setup-0.3.1.exe"
 +else
 +  echo "done: dist/spjss (installer skipped — iscc/wine not found)"
 +fi
@@ -4679,7 +4679,7 @@ index a7255fe..624abd8 100644
  
  #define AppName "spjss"
 -#define AppVersion "0.2.5"
-+#define AppVersion "0.3.0"
++#define AppVersion "0.3.1"
  #define AppPublisher "mroczect"
  #define AppURL "https://github.com/mroczect/librjss"
  #define AppExeName "spjss.exe"
@@ -4753,7 +4753,7 @@ index eadd81a..14637ff 100644
  [project]
  name = "spjss"
 -version = "0.2.5"
-+version = "0.3.0"
++version = "0.3.1"
  description = "GUI client for Frappe / ERPNext via librjss-ffi"
  readme = "README.md"
  authors = [
@@ -4766,7 +4766,7 @@ index 49535fb..ad5cedc 100644
  from ._native import version as lib_version
  
 -__version__ = "0.2.5"
-+__version__ = "0.3.0"
++__version__ = "0.3.1"
  __all__ = ["JssError", "RjssClient", "__version__", "lib_version"]
 diff --git a/src/spjss/app.py b/src/spjss/app.py
 index b371d63..415bab3 100644
@@ -5795,7 +5795,7 @@ index a5b740b..f61fabc 100644
  [[package]]
  name = "spjss"
 -version = "0.2.5"
-+version = "0.3.0"
++version = "0.3.1"
  source = { editable = "." }
  dependencies = [
      { name = "keyring" },

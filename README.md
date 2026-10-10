@@ -183,8 +183,8 @@ is skipped unless `iscc` or `wine` is available.
 Push a tag:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 The `release` workflow builds `spjss.exe` and `spjss-setup-<version>.exe`,
